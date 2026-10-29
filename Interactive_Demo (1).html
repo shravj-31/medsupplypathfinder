@@ -1,0 +1,247 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Med-Supply PathFinder – Interactive Demo</title><style>
+:root{--bg:#f4f7fb;--card:#fff;--ink:#16202e;--mut:#5d6b7e;--line:#dfe5ee;--acc:#1f6feb;--ok:#1d9a5b;--bad:#cf3b3b;--warn:#c78a00}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1520;--card:#171f2d;--ink:#e8edf5;--mut:#98a5b8;--line:#2a3547;--acc:#5b9bff;--ok:#3ccf86;--bad:#ff6b6b;--warn:#f2b83d}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+header{padding:18px 22px 6px}h1{margin:0;font-size:24px}.sub{color:var(--mut)}
+.note{margin:10px 22px 0;border-left:4px solid var(--acc);background:var(--card);padding:8px 12px;border-radius:6px;font-size:13px}
+.layout{display:grid;grid-template-columns:360px 1fr;gap:14px;padding:14px 22px 40px}@media(max-width:1000px){.layout{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+h2{font-size:15px;margin:0 0 8px}label{display:block;font-size:12px;color:var(--mut);margin:8px 0 2px}
+input,select,button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px}input[type=range]{padding:0;width:100%}
+select,input[type=number],input[type=text]{width:100%}button{cursor:pointer;background:var(--acc);color:#fff;border:0;font-weight:600}button.sec{background:var(--bg);color:var(--ink);border:1px solid var(--line)}button.sm{padding:3px 8px;font-size:12px}button.bad{background:var(--bad)}
+.row{display:flex;gap:8px}.row>*{flex:1}.kpis{display:flex;gap:8px;flex-wrap:wrap}.kpi{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 12px;min-width:110px}.kpi b{display:block;font-size:20px}.kpi span{font-size:11px;color:var(--mut)}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{font-size:11px;color:var(--mut);text-transform:uppercase}
+td input,td select{padding:3px 5px;font-size:12px;width:auto}td input[type=number]{width:62px}
+tr.win td{background:rgba(29,154,91,.15);font-weight:600}tr.drop td{color:var(--mut)}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:11.5px;font-weight:600}.pill.ok{background:rgba(29,154,91,.17);color:var(--ok)}.pill.bad{background:rgba(207,59,59,.15);color:var(--bad)}.pill.run{background:rgba(31,111,235,.16);color:var(--acc)}
+.banner{border:1px solid var(--ok);background:rgba(29,154,91,.1);border-radius:10px;padding:10px 12px;margin-top:8px}.banner.none{border-color:var(--bad);background:rgba(207,59,59,.1)}
+.formula{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:8px}
+svg{width:100%;max-width:720px;display:block;margin:auto;height:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px}.log{max-height:170px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px}.log div{padding:2px 0;border-bottom:1px dashed var(--line)}
+.muted{color:var(--mut);font-size:12px}.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;min-width:70px}.bar i{display:block;height:100%;background:var(--acc)}
+</style></head><body>
+<header><h1>🏥 Med-Supply PathFinder – Interactive Demo</h1><div class="sub">Choose the task, weight and fleet availability – the decision matrix recomputes instantly.</div></header>
+<div class="note"><b>How this relates to the project:</b> this page runs the <b>same algorithm</b> as the backend (Dijkstra/A*, wt ≤ Capacity, availability, payload-aware time, Emergency/Medical/Dynamic ranking), ported to the browser and checked against the Python backend (identical winners, ETAs and scores). It needs no install. It does <u>not</u> write to PostgreSQL – use the real app for the database demo.</div>
+<div class="layout"><div>
+<div class="card"><h2>1. Task request</h2>
+<div class="row"><div><label>Source (pickup)</label><select id="src"></select></div><div><label>Destination</label><select id="dst"></select></div></div>
+<label>wt – payload weight: <b id="wtv"></b> kg</label><input type="range" id="wtr" min="0.1" max="20" step="0.1" value="2"><input type="number" id="wt" min="0.1" max="100" step="0.1" value="2">
+<div class="row"><div><label>Priority</label><select id="prio"><option>Critical</option><option>High</option><option selected>Medium</option><option>Low</option></select></div>
+<div><label>Domain</label><select id="dom"><option value="auto">Auto (by priority)</option><option value="Emergency">Emergency</option><option value="Medical">Medical</option><option value="Dynamic">Dynamic (Set A)</option></select></div></div>
+<div class="row"><div><label>Organization</label><select id="org"><option>ORG-001</option><option>ORG-002</option></select></div><div><label>Tasks waiting in queue</label><input type="number" id="pend" min="0" value="0"></div></div>
+<div class="row" style="margin-top:10px"><button id="addq">Add task to queue</button><button class="sec" id="reset">Reset demo</button></div></div>
+<div class="card"><h2>2. Corridors</h2><div id="edges" class="muted"></div><div class="muted" style="margin-top:6px">Tick a corridor to block it (both directions).</div></div>
+<div class="card"><h2>3. Robo Mode</h2><label><input type="checkbox" id="auto" style="width:auto"> Automated scheduling of the queue (off = manual: you press Assign)</label>
+<label>Simulation speed</label><select id="speed"><option value="1">×1 (real time)</option><option value="5" selected>×5</option><option value="20">×20</option></select>
+<h2 style="margin-top:12px">Task queue</h2><div class="tw" id="queue"></div></div>
+</div><div>
+<div class="card"><h2>Hospital map</h2><svg id="map" viewBox="-4 -4 108 84"></svg>
+<div class="muted">Orange = robot to pickup · blue = pickup to destination · red dashed = blocked corridor · squares = robots (green available, blue active, grey/yellow/red unavailable)</div></div>
+<div class="card"><h2>Decision matrix</h2><div class="kpis" id="kpis"></div><div id="routeinfo" class="muted" style="margin-top:6px"></div><div class="tw" id="matrix" style="margin-top:6px"></div><div id="banner"></div></div>
+<div class="card"><h2>Fleet – edit availability, battery, capacity, speed</h2><div class="tw" id="fleet"></div>
+<div class="row" style="margin-top:8px;align-items:end"><div><label>New unit type</label><select id="nt"><option>Robot</option><option>Drone</option></select></div><div><label>Capacity kg</label><input type="number" id="nc" value="5" min="0.5" step="0.5"></div><div><label>Speed m/s</label><input type="number" id="ns" value="1.5" min="0.1" step="0.1"></div><div><label>Start</label><select id="nl"></select></div><div><button id="addr">Add unit</button></div></div></div>
+<div class="card"><h2>Running tasks (reserved time windows)</h2><div id="running" class="tw"></div></div>
+<div class="card"><h2>Action log (timestamped)</h2><div class="log" id="log"></div></div>
+</div></div>
+<script>
+// Browser port of algorithms/*.py and backend/services/engine.py + domains.py (same formulas and constants).
+const LOCS = [
+  {id:1,name:"Pharmacy",x:10,y:10},{id:2,name:"Blood Bank",x:10,y:50},{id:3,name:"Ward A",x:60,y:10},
+  {id:4,name:"ICU",x:80,y:20},{id:5,name:"Laboratory",x:90,y:60},{id:6,name:"Surgery",x:60,y:70},
+  {id:7,name:"Elevator 1",x:40,y:20},{id:8,name:"Emergency Dock",x:70,y:30}];
+const EDGES = [[1,3,50],[3,4,20],[4,5,30],[1,7,35],[7,4,25],[2,6,40],[6,4,35],[3,6,65],[1,2,45],[4,8,15],[8,6,30],[5,6,25]];
+const PARAMS = {alpha:0.6, handling:10, drain:0.05, reserve:10};
+const DOMAINS = {
+  Emergency:{label:"Emergency",mult:1.25,minBat:15},
+  Medical:{label:"Medical",mult:1.0,minBat:30},
+  Dynamic:{label:"Dynamic (Set A)",mult:1.1,minBat:20,weights:{eta:0.5,battery:0.3,utilisation:0.2},threshold:3,boost:0.2}
+};
+const nameOf = id => LOCS.find(l => l.id === id).name;
+const locOf = id => LOCS.find(l => l.id === id);
+
+function buildGraph(blocked){
+  const adj = {}; LOCS.forEach(l => adj[l.id] = []);
+  EDGES.forEach(([a,b,d]) => { if (blocked.has(a+"-"+b) || blocked.has(b+"-"+a)) return; adj[a].push([b,d]); adj[b].push([a,d]); });
+  const g = {adj, ratio:1};
+  for (const a in adj) adj[a].forEach(([b,d]) => { const e = euclid(+a,b); if (e > 0) g.ratio = Math.min(g.ratio, d/e); });
+  return g;
+}
+function euclid(a,b){ const p=locOf(a), q=locOf(b); return Math.hypot(p.x-q.x, p.y-q.y); }
+function shortest(g, s, t, useAstar){
+  if (s === t) return null;
+  const dist = {[s]:0}, prev = {}, closed = new Set(); const heap = [[useAstar ? euclid(s,t)*g.ratio : 0, s]];
+  while (heap.length){
+    heap.sort((a,b) => a[0]-b[0] || a[1]-b[1]); const [,u] = heap.shift();
+    if (closed.has(u)) continue; closed.add(u); if (u === t) break;
+    for (const [v,w] of g.adj[u]){ const nd = dist[u]+w;
+      if (nd < (dist[v] ?? Infinity)){ dist[v]=nd; prev[v]=u; heap.push([nd + (useAstar ? euclid(v,t)*g.ratio : 0), v]); } }
+  }
+  if (dist[t] === undefined) return null;
+  const path=[t]; while (path[0] !== s) path.unshift(prev[path[0]]);
+  return {algorithm:useAstar?"A*":"Dijkstra", path, distance:Math.round(dist[t]*1000)/1000, explored:closed.size};
+}
+const r2 = x => Math.round(x*100)/100, r4 = x => Math.round(x*10000)/10000;
+function payloadCoeff(wt,cap){ return 1 + PARAMS.alpha*(wt/cap); }
+function estimate(d1,d2,base,wt,cap,mult){
+  const c = payloadCoeff(wt,cap), speed = base*mult, empty = d1/speed, loaded = d2*c/speed, total = empty+loaded+PARAMS.handling;
+  return {coeff:r4(c), effSpeed:r4(speed/c), empty:r2(empty), loaded:r2(loaded), handling:PARAMS.handling, total:r2(total)};
+}
+function evaluate(r, wt, d1, d2, dom){
+  const available = r.status === "Available", capacityOk = wt <= r.capacity, batteryOk = r.battery >= dom.minBat, routeOk = d1 !== null && d2 !== null;
+  let est = null, tripOk = false;
+  if (routeOk){ est = estimate(d1,d2,r.speed,wt,r.capacity,dom.mult); tripOk = (r.battery - (d1+d2)*PARAMS.drain) >= PARAMS.reserve; }
+  let reason;
+  if (!available) reason = "Unavailable ("+r.status+")";
+  else if (!capacityOk) reason = "Over capacity (wt "+wt.toFixed(1)+" kg > "+r.capacity.toFixed(1)+" kg)";
+  else if (!batteryOk) reason = "Battery "+r.battery+"% below "+dom.label+" minimum "+dom.minBat+"%";
+  else if (!routeOk) reason = "No route (corridors blocked)";
+  else if (!tripOk) reason = "Battery too low for this trip";
+  else reason = "OK";
+  return {id:r.id,type:r.type,status:r.status,location:nameOf(r.loc),battery:r.battery,capacity:r.capacity,wt,util:r4(wt/r.capacity),
+    available,capacityOk,batteryOk,routeOk,tripOk,eligible:available&&capacityOk&&batteryOk&&routeOk&&tripOk,reason,d1,d2,est,eta:est?est.total:null,score:null,rank:null,selected:false};
+}
+function rankRows(rows, key, pending){
+  const el = rows.filter(r => r.eligible); if (!el.length) return;
+  if (key === "Emergency") el.forEach(r => r.score = r4(r.eta));
+  else if (key === "Medical") el.forEach(r => r.score = r4(r.eta*(1+r.util)*(1+(100-r.battery)/200)));
+  else {
+    const D = DOMAINS.Dynamic; let w = {...D.weights}; if (pending >= D.threshold) w.eta += D.boost;
+    const tot = Object.values(w).reduce((a,b)=>a+b,0); for (const k in w) w[k] /= tot;
+    const norm = vals => { const lo=Math.min(...vals), hi=Math.max(...vals); return vals.map(v => hi===lo ? 0 : (v-lo)/(hi-lo)); };
+    const e = norm(el.map(r=>r.eta)), b = norm(el.map(r=>r.battery)), u = norm(el.map(r=>r.util));
+    el.forEach((r,i) => r.score = r4(w.eta*e[i] + w.battery*(1-b[i]) + w.utilisation*u[i]));
+  }
+  el.sort((a,b) => a.score-b.score || (a.id<b.id?-1:1)); el.forEach((r,i) => r.rank = i+1);
+}
+// robots: [{id,type,status,battery,capacity,speed,loc}], returns {rows, winner, main, pool}
+function decide(robots, wt, src, dst, domKey, blocked, pending){
+  const g = buildGraph(blocked), dom = DOMAINS[domKey], main = shortest(g, src, dst, true), cache = {};
+  const rows = robots.map(r => {
+    let d1 = null, d2 = null;
+    if (main){
+      if (!(r.loc in cache)) cache[r.loc] = r.loc === src ? {distance:0,path:[src]} : shortest(g, r.loc, src, true);
+      const leg = cache[r.loc]; if (leg){ d1 = leg.distance; d2 = main.distance; }
+    }
+    const row = evaluate(r, wt, d1, d2, dom); row.legPath = cache[r.loc] ? cache[r.loc].path : null; return row;
+  });
+  rankRows(rows, domKey, pending);
+  const winner = rows.filter(r => r.eligible).sort((a,b)=>a.rank-b.rank)[0] || null; if (winner) winner.selected = true;
+  rows.sort((a,b) => (a.eligible===b.eligible) ? (a.eligible ? a.rank-b.rank : (a.id<b.id?-1:1)) : (a.eligible?-1:1));
+  return {rows, winner, main, g, pool:{n:rows.length, available:rows.filter(r=>r.available).length, capOk:rows.filter(r=>r.capacityOk).length, eligible:rows.filter(r=>r.eligible).length}};
+}
+if (typeof module !== "undefined") module.exports = {LOCS,EDGES,PARAMS,DOMAINS,buildGraph,shortest,decide,estimate,nameOf};
+
+const $ = id => document.getElementById(id), idOf = n => LOCS.find(l => l.name === n).id;
+const SEED = () => ({
+ "ORG-001":[{id:"DR001",type:"Drone",status:"Available",battery:88,capacity:3,speed:4,loc:idOf("Emergency Dock")},{id:"RB001",type:"Robot",status:"Available",battery:92,capacity:10,speed:1.5,loc:idOf("Pharmacy")},
+  {id:"RB002",type:"Robot",status:"Charging",battery:65,capacity:8,speed:1.4,loc:idOf("Emergency Dock")},{id:"RB003",type:"Robot",status:"Available",battery:78,capacity:12,speed:1.3,loc:idOf("Blood Bank")},
+  {id:"RB004",type:"Robot",status:"Maintenance",battery:25,capacity:10,speed:1.5,loc:idOf("Surgery")}],
+ "ORG-002":[{id:"RB101",type:"Robot",status:"Available",battery:95,capacity:6,speed:1.5,loc:idOf("Pharmacy")},{id:"RB102",type:"Robot",status:"Available",battery:80,capacity:15,speed:1.2,loc:idOf("Ward A")}]});
+let fleets = SEED(), blocked = new Set(), running = [], queue = [], qn = 0, last = null;
+const PR = {Critical:1,High:2,Medium:3,Low:4}, esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const cur = () => fleets[$("org").value], num = id => parseFloat($(id).value) || 0, src = () => +$("src").value, dst = () => +$("dst").value;
+const domKey = (prio, sel) => sel === "auto" ? (prio === "Critical" ? "Emergency" : "Medical") : sel;
+const clock = () => new Date().toLocaleTimeString();
+function log(msg){ const d = document.createElement("div"); d.textContent = clock() + "  " + msg; $("log").prepend(d); }
+function fmt(s){ s = Math.max(0, s); return s < 60 ? s.toFixed(0)+" s" : Math.floor(s/60)+"m "+String(Math.round(s%60)).padStart(2,"0")+"s"; }
+
+function init(){
+  const opts = LOCS.map(l => `<option value="${l.id}">${l.name}</option>`).join("");
+  $("src").innerHTML = opts; $("dst").innerHTML = opts; $("nl").innerHTML = opts; $("src").value = idOf("Blood Bank"); $("dst").value = idOf("ICU"); $("nl").value = idOf("Pharmacy");
+  $("edges").innerHTML = EDGES.map(([a,b,d]) => `<label style="display:inline-block;margin:2px 10px 2px 0;color:var(--ink)"><input type="checkbox" data-e="${a}-${b}" style="width:auto"> ${nameOf(a)} ↔ ${nameOf(b)} (${d} m)</label>`).join("");
+  $("edges").onchange = e => { const k = e.target.dataset.e; e.target.checked ? blocked.add(k) : blocked.delete(k); log((e.target.checked ? "BLOCKED " : "UNBLOCKED ") + e.target.parentNode.textContent.trim()); render(); };
+  $("wtr").oninput = () => { $("wt").value = $("wtr").value; render(); };
+  $("wt").oninput = () => { $("wtr").value = Math.min(20, num("wt")); render(); };
+  ["src","dst","prio","dom","org","pend"].forEach(i => $(i).onchange = $(i).oninput = render);
+  $("addr").onclick = () => { const f = cur(), p = $("nt").value === "Drone" ? "DR" : "RB"; let n = 1; const used = new Set(Object.values(fleets).flat().map(r => r.id)); while (used.has(p + String(n).padStart(3,"0"))) n++;
+    const id = p + String(n).padStart(3,"0"); f.push({id,type:$("nt").value,status:"Available",battery:100,capacity:num("nc")||5,speed:num("ns")||1.5,loc:+$("nl").value}); log("FLEET_ADD " + id + " to " + $("org").value); render(); };
+  $("addq").onclick = () => { qn++; queue.push({id:"T"+String(qn).padStart(3,"0"),src:src(),dst:dst(),wt:num("wt"),prio:$("prio").value,dom:$("dom").value,org:$("org").value,status:"Pending",note:"",robot:""}); log("TASK_CREATED T"+String(qn).padStart(3,"0")+" "+nameOf(src())+" → "+nameOf(dst())+" wt "+num("wt")+" kg ("+$("prio").value+")"); renderQueue(); tick(); };
+  $("reset").onclick = () => { fleets = SEED(); blocked.clear(); running = []; queue = []; qn = 0; document.querySelectorAll("#edges input").forEach(i => i.checked = false); $("log").innerHTML = ""; log("Demo reset"); render(); };
+  $("fleet").onchange = e => { const t = e.target, [id, f] = [t.dataset.id, t.dataset.f]; if (!id) return; const r = cur().find(x => x.id === id);
+    if (running.some(x => x.robot === id)) { log("Cannot edit " + id + " while it runs a task"); render(); return; }
+    r[f] = (f === "status" || f === "type") ? t.value : (f === "loc" ? +t.value : parseFloat(t.value)); if (f === "battery") r.battery = Math.max(0, Math.min(100, Math.round(r.battery)));
+    log("ROBOT_UPDATED " + id + " " + f + " = " + t.value); render(); };
+  $("fleet").onclick = e => { const id = e.target.dataset.rm; if (!id) return; if (running.some(x => x.robot === id)) { log("Cannot remove " + id + " – busy"); return; } fleets[$("org").value] = cur().filter(r => r.id !== id); log("FLEET_REMOVE " + id); render(); };
+  $("matrix").onclick = e => { const id = e.target.dataset.assign; if (id) assign(id, "manual"); };
+  log("Demo ready – fleet loaded from the project's seed data"); render(); setInterval(tick, 300);
+}
+function compute(){ const pend = Math.max(num("pend"), queue.filter(q => q.status === "Pending").length);
+  return decide(cur(), num("wt") || 0.1, src(), dst(), domKey($("prio").value, $("dom").value), blocked, pend); }
+
+function assign(robotId, mode, task){
+  const t = task || {src:src(), dst:dst(), wt:num("wt"), prio:$("prio").value, dom:$("dom").value, org:$("org").value, id:"MANUAL"};
+  const f = fleets[t.org], dk = domKey(t.prio, t.dom), res = decide(f, t.wt, t.src, t.dst, dk, blocked, queue.filter(q => q.status==="Pending").length);
+  const row = res.rows.find(r => r.id === robotId);
+  if (!row) return false;
+  if (!row.capacityOk){ log("REJECTED " + robotId + ": capacity check failed (wt " + t.wt + " > " + row.capacity + " kg)"); return false; }
+  if (!row.available){ log("REJECTED " + robotId + ": not available (" + row.status + ")"); return false; }
+  if (!row.routeOk || !row.tripOk){ log("REJECTED " + robotId + ": " + row.reason); return false; }
+  const dur = row.est.total, rob = f.find(r => r.id === robotId);
+  rob.status = "Active"; running.push({robot:robotId, org:t.org, task:t.id, from:t.src, to:t.dst, dist:row.d1+row.d2, dur, t0:Date.now(), mode, wt:t.wt, est:row.est, taskRef:task||null});
+  if (task){ task.status = "In Transit"; task.robot = robotId; task.note = ""; }
+  log((mode === "manual" ? "MANUAL_OVERRIDE " : "AUTO_SCHEDULED ") + (t.id) + " → " + robotId + " | reserved " + fmt(dur) + " (" + row.est.empty + "s + " + row.est.loaded + "s + " + row.est.handling + "s) | " + dk + " domain");
+  render(); return true;
+}
+function tick(){
+  const sp = +$("speed").value, now = Date.now();
+  for (const r of [...running]){
+    if ((now - r.t0) / 1000 * sp >= r.dur){
+      const rob = fleets[r.org].find(x => x.id === r.robot); running.splice(running.indexOf(r), 1);
+      if (rob){ rob.loc = r.to; rob.battery = Math.max(0, rob.battery - Math.ceil(r.dist * PARAMS.drain)); rob.status = rob.battery < 20 ? "Charging" : "Available"; }
+      if (r.taskRef){ r.taskRef.status = "Delivered"; }
+      log("DELIVERY_COMPLETED " + r.task + " by " + r.robot + " → unit " + (rob ? rob.status + ", battery " + rob.battery + "%, now at " + nameOf(r.to) : "removed")); render();
+    }
+  }
+  if ($("auto").checked){
+    const pend = queue.filter(q => q.status === "Pending").sort((a,b) => PR[a.prio]-PR[b.prio]);
+    for (const q of pend){
+      const res = decide(fleets[q.org], q.wt, q.src, q.dst, domKey(q.prio, q.dom), blocked, pend.length);
+      if (res.winner) assign(res.winner.id, "auto", q);
+      else { const n = "No eligible unit"; if (q.note !== n){ q.note = n; renderQueue(); } }
+    }
+  }
+  renderRunning(); if (running.length) renderMap();
+}
+function render(){ renderMatrix(); renderFleet(); renderQueue(); renderRunning(); renderMap(); }
+function renderMatrix(){
+  const res = compute(), p = res.pool, w = res.winner;
+  $("kpis").innerHTML = [["No. of Robots",p.n],["Availability OK",p.available],["wt ≤ Capacity",p.capOk],["Eligible",p.eligible],["Selected",w ? w.id : "none"]].map(([k,v]) => `<div class="kpi"><b>${v}</b><span>${k}</span></div>`).join("");
+  $("wtv").textContent = num("wt").toFixed(1);
+  $("routeinfo").innerHTML = res.main ? `Route: <b>${res.main.path.map(nameOf).join(" → ")}</b> · ${res.main.distance} m · algorithm A* (explored ${res.main.explored} nodes) · domain ${DOMAINS[domKey($("prio").value,$("dom").value)].label}` : `<span style="color:var(--bad)">No route between pickup and destination (source = destination or corridors blocked)</span>`;
+  $("matrix").innerHTML = `<table><thead><tr><th>Rank</th><th>Unit</th><th>Status</th><th>Capacity</th><th>wt ≤ cap</th><th>Battery</th><th>To pickup</th><th>Delivery</th><th>ETA</th><th>Score</th><th>Verdict</th><th>Reason</th><th></th></tr></thead><tbody>` +
+   res.rows.map(r => `<tr class="${r.selected?"win":(r.eligible?"":"drop")}"><td>${r.rank ?? "–"}</td><td>${r.id} (${r.type})</td><td>${r.status}</td><td>${r.capacity} kg</td><td>${r.capacityOk?"yes":"<b style='color:var(--bad)'>no</b>"}</td><td>${r.battery}%</td><td>${r.d1===null?"–":r.d1+" m"}</td><td>${r.d2===null?"–":r.d2+" m"}</td><td>${r.eta===null?"–":r.eta+" s"}</td><td>${r.score ?? "–"}</td><td>${r.selected?'<span class="pill ok">SELECTED</span>':(r.eligible?"eligible":'<span class="pill bad">dropped</span>')}</td><td>${esc(r.reason)}</td><td>${r.eligible?`<button class="sm sec" data-assign="${r.id}">Assign</button>`:""}</td></tr>`).join("") + "</tbody></table>";
+  let html = "";
+  if (w){ const e = w.est; html = `<div class="banner"><b>${w.id}</b> wins · ETA <b>${fmt(e.total)}</b> = empty leg ${e.empty}s + loaded leg ${e.loaded}s + handling ${e.handling}s · payload coefficient ${e.coeff} (effective loaded speed ${e.effSpeed} m/s) <button id="assignw" style="margin-left:10px">Assign ${w.id} (reserve ${fmt(e.total)})</button></div>`; }
+  else html = `<div class="banner none"><b>No eligible unit.</b> ${p.capOk === 0 && p.n ? "Every unit fails <code>wt ≤ Capacity</code> – the task cannot be scheduled." : "Free a unit, change its status, or unblock a corridor."}</div>`;
+  html += `<div class="formula">speed = base_speed × domain multiplier<br>empty leg = d_pickup / speed · loaded leg = d_delivery × (1 + 0.6 × wt/Capacity) / speed · total = empty + loaded + 10 s handling</div>`;
+  $("banner").innerHTML = html;
+  if (w) $("assignw").onclick = () => assign(w.id, "manual");
+}
+function renderFleet(){
+  const stOpts = s => ["Available","Charging","Offline","Maintenance","Active"].map(o => `<option ${o===s?"selected":""} ${o==="Active"?"disabled":""}>${o}</option>`).join("");
+  const lo = l => LOCS.map(x => `<option value="${x.id}" ${x.id===l?"selected":""}>${x.name}</option>`).join("");
+  $("fleet").innerHTML = `<table><thead><tr><th>Unit</th><th>Status (Availability)</th><th>Battery %</th><th>Capacity kg</th><th>Speed m/s</th><th>Location</th><th></th></tr></thead><tbody>` +
+   cur().map(r => `<tr><td>${r.id} (${r.type})</td><td><select data-id="${r.id}" data-f="status">${stOpts(r.status)}</select></td><td><input type="number" data-id="${r.id}" data-f="battery" value="${r.battery}" min="0" max="100"></td><td><input type="number" data-id="${r.id}" data-f="capacity" value="${r.capacity}" min="0.5" step="0.5"></td><td><input type="number" data-id="${r.id}" data-f="speed" value="${r.speed}" min="0.1" step="0.1"></td><td><select data-id="${r.id}" data-f="loc">${lo(r.loc)}</select></td><td><button class="sm bad" data-rm="${r.id}">Remove</button></td></tr>`).join("") + "</tbody></table>";
+}
+function renderQueue(){
+  $("queue").innerHTML = queue.length ? `<table><thead><tr><th>Task</th><th>Route</th><th>wt</th><th>Priority</th><th>Status</th><th>Unit</th></tr></thead><tbody>` + queue.slice().reverse().map(q => `<tr><td>${q.id}</td><td>${nameOf(q.src)} → ${nameOf(q.dst)}</td><td>${q.wt} kg</td><td>${q.prio}</td><td>${q.status === "Pending" ? '<span class="pill bad">Pending</span> ' + esc(q.note) : q.status === "In Transit" ? '<span class="pill run">In Transit</span>' : '<span class="pill ok">Delivered</span>'}</td><td>${q.robot || "–"}</td></tr>`).join("") + "</tbody></table>" : '<span class="muted">Empty – set a task above and press “Add task to queue”.</span>';
+}
+function renderRunning(){
+  const sp = +$("speed").value, now = Date.now();
+  $("running").innerHTML = running.length ? `<table><thead><tr><th>Unit</th><th>Task</th><th>Route</th><th>Mode</th><th>Reserved</th><th>Remaining</th><th>Progress</th></tr></thead><tbody>` + running.map(r => { const el = (now - r.t0)/1000*sp, pct = Math.min(100, el/r.dur*100);
+    return `<tr><td>${r.robot}</td><td>${r.task}</td><td>${nameOf(r.from)} → ${nameOf(r.to)}</td><td>${r.mode}</td><td>${fmt(r.dur)}</td><td>${fmt(r.dur-el)}</td><td><div class="bar"><i style="width:${pct}%"></i></div></td></tr>`; }).join("") + "</tbody></table>" : '<span class="muted">No unit is currently reserved. Assign a unit to see its availability flip to Active for the calculated duration.</span>';
+}
+function renderMap(){
+  const res = compute(), g = res.g, W = res.winner, colors = {Available:"#1d9a5b",Active:"#1f6feb",Charging:"#c78a00",Offline:"#8a8f98",Maintenance:"#cf3b3b"};
+  let s = ""; EDGES.forEach(([a,b]) => { const A = locOf(a), B = locOf(b), bl = blocked.has(a+"-"+b);
+    s += `<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" stroke="${bl?"#cf3b3b":"#9aa7b8"}" stroke-width="${bl?1.2:0.8}" ${bl?'stroke-dasharray="2 2"':""}/>`; });
+  const poly = (path, col) => path && path.length > 1 ? `<polyline points="${path.map(i => locOf(i).x+","+locOf(i).y).join(" ")}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>` : "";
+  if (W && W.legPath) s += poly(W.legPath, "#e08a00"); if (res.main) s += poly(res.main.path, "#1f6feb");
+  LOCS.forEach(l => { const isS = l.id === src(), isD = l.id === dst();
+    s += `<circle cx="${l.x}" cy="${l.y}" r="3" fill="${isS?"#e08a00":isD?"#1f6feb":"var(--card)"}" stroke="var(--ink)" stroke-width=".6"/><text x="${l.x}" y="${l.y-4.6}" font-size="2.9" text-anchor="middle" fill="var(--ink)">${l.name}</text>`; });
+  const at = {}; cur().forEach(r => { const k = r.loc, i = at[k] = (at[k] || 0) + 1, l = locOf(k);
+    s += `<rect x="${l.x + 4 + (i-1)*9.6}" y="${l.y + 1.2}" width="9" height="4.2" rx="1" fill="${colors[r.status]}"/><text x="${l.x + 8.5 + (i-1)*9.6}" y="${l.y + 4.2}" font-size="2.5" text-anchor="middle" fill="#fff">${r.id}</text>`; });
+  $("map").innerHTML = s;
+}
+init();
+</script></body></html>
